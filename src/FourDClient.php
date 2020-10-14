@@ -135,6 +135,7 @@ class FourDClient {
       $data[$key] = $value;
     }
 
+    //print_r($data);
     return $data;
   }
 
@@ -160,6 +161,8 @@ class FourDClient {
       "png jpg",
       "release"
     );
+
+    //echo "$query\n";
 
     $this->send($msg);
 
@@ -233,6 +236,8 @@ class FourDClient {
     $index = $size-1;
     $remaining_size = $size;
 
+    //socket_set_nonblock($this->socket);
+
     while (!isset($buffer[$index])) {
       $_r = socket_read($this->socket, $remaining_size, PHP_BINARY_READ);
 
@@ -240,10 +245,15 @@ class FourDClient {
         break;
       }
 
-      $remaining_size -= strlen($_r);
+      $len = strlen($_r);
+      $remaining_size -= $len;
+
+      //echo "$len ($size / $remaining_size)\n";
 
       $buffer .= $_r;
     }
+
+    //socket_set_block($this->socket);
 
     return $buffer;
   }
@@ -254,7 +264,9 @@ class FourDClient {
    * @return string
    */
   function readPascalString() {
-    $l = abs($this->readUInt32()) * 2;
+    $l = $this->readUInt32();
+    $l = abs($l) * 2;
+    //echo "Length: $l\n";
 
     if ($l == 0) {
       return "";
@@ -262,7 +274,8 @@ class FourDClient {
 
     $string = $this->read($l);
 
-    return iconv('UTF-16LE', 'UTF-8', $string);
+    $string = iconv('UTF-16LE', 'UTF-8', $string);
+    return $string;
   }
 
   /**
@@ -329,7 +342,12 @@ class FourDClient {
    * @return integer
    */
   function readUInt32() {
-    $tmp = unpack("V", $this->read(4));
+    $val = $this->read(4);
+    $tmp = unpack("V", $val);
+
+    if ($tmp[1] >= 0x80000000) {
+      $tmp[1] -= 0x100000000;
+    }
 
     return $tmp[1];
   }
@@ -341,6 +359,10 @@ class FourDClient {
    */
   function readUInt64() {
     $tmp = unpack("V", $this->read(8));
+
+    if ($tmp[1] >= 0x800000000000) {
+      $tmp[1] -= 0x1000000000000;
+    }
 
     return $tmp[1];
   }

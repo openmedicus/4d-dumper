@@ -21,7 +21,7 @@ $options = array(
   "password" => null,
   "output"   => ".",
   "schemaout" => null,
-  "limit"    => 1000000,
+  "limit"    => 10000000,
   "tables"   => null,
 );
 
@@ -89,12 +89,15 @@ $allographs = array(
 );
 
 foreach ($list_tables as $_table) {
+  $_table_name = strtoupper($_table);
+  if ($_table == "User") $_table = "Users";
   echo "## $_table ##\n";
 
   // List columns
-  $_table_name = strtoupper($_table);
   $stmt_cols = $client->execStatement("SELECT * FROM _USER_COLUMNS WHERE UPPER(TABLE_NAME) = '$_table_name';");
+  //print_r($stmt_cols);
   $cols = $stmt_cols->fetchAll();
+  //print_r($cols);
   $stmt_cols->close();
 
   // List indexes
@@ -122,13 +125,21 @@ foreach ($list_tables as $_table) {
     );
   }
 
-  $query = "CREATE TABLE `$_table`";
+  $query = "DROP TABLE IF EXISTS $_table;\n";
+  $query .= "CREATE TABLE $_table";
   $query_columns = array();
+  $column_names = array();
   foreach ($cols as $_col) {
     $_name = str_replace($allographs["withdiacritics"], $allographs["withoutdiacritics"], $_col['COLUMN_NAME']);
     $_type = $_col["DATA_TYPE"];
     $_length = $_col["DATA_LENGTH"];
     $_nullable = $_col["NULLABLE"];
+
+    if ($_name == "Default") $_name = "Default1";
+    if ($_name == "default") $_name = "default1";
+    if ($_name == "Check") $_name = "Check1";
+
+    $column_names[] = $_name;
 
     /**
      * Field type in 4D   DATA_TYPE
@@ -144,27 +155,28 @@ foreach ($list_tables as $_table) {
      * Alpha              10 *
      * Text               10 *
      * Picture            12
+     * UUID		  13
      * CLOB               14
      * BLOB               18
      */
     switch ($_type) {
       case 1:
-        $_sql_type = "TINYINT(1)";
+        $_sql_type = "BOOL";
         break;
       case 3:
-        $_sql_type = "SMALLINT(11)";
+        $_sql_type = "SMALLINT";
         break;
       case 4:
-        $_sql_type = "INT(11)";
+        $_sql_type = "INT";
         break;
       case 5:
-        $_sql_type = "BIGINT(20)";
+        $_sql_type = "BIGINT";
         break;
       case 6:
-        $_sql_type = "DOUBLE";
+        $_sql_type = "DOUBLE PRECISION";
         break;
       case 7:
-        $_sql_type = "FLOAT";
+        $_sql_type = "REAL";
         break;
       case 8:
         $_sql_type = "DATE";
@@ -174,7 +186,7 @@ foreach ($list_tables as $_table) {
         break;
       case 10:
         if ($_length == 0 || $_length > 65535) {
-          $_sql_type = "LONGTEXT";
+          $_sql_type = "TEXT";
         }
         elseif ($_length > 255) {
           $_sql_type = "TEXT";
@@ -186,34 +198,49 @@ foreach ($list_tables as $_table) {
       case 12:
       case 14:
       case 18:
-        $_sql_type = "BLOB";
+        $_sql_type = "BYTEA";
+        break;
+      case 13:
+        $_sql_type = "UUID";
         break;
 
       default:
         throw new Exception("Unknown data type $_type");
     }
 
-    $query_columns[] = "`$_name` $_sql_type";
+    $query_columns[] = "$_name $_sql_type";
   }
 
   // Indexes
+  $index_statements = array();
   foreach ($index_struct as $_struct) {
     $_columns = array();
     foreach ($_struct["columns"] as $_col) {
       $_name = str_replace($allographs["withdiacritics"], $allographs["withoutdiacritics"], $_col['COLUMN_NAME']);
-      $_columns[] = "`$_name`";
+      if ($_name == "Default") $_name = "Default1";
+      if ($_name == "default") $_name = "default1";
+      if ($_name == "Check") $_name = "Check1";
+      $_columns[] = "$_name";
     }
 
     $_type = "INDEX";
     if ($_struct["unique"]) {
-      $_type = "UNIQUE";
+      $index_statements[] = "CREATE UNIQUE INDEX " . $_table . "_" . implode(', ', $_columns) . "_idx ON $_table (".implode(', ', $_columns).");";
     }
-
-    $query_columns[] = "$_type (".implode(', ', $_columns).")";
+    else
+    {
+      $index_statements[] = "CREATE INDEX " . $_table . "_" . implode(', ', $_columns) . "_idx ON $_table (".implode(', ', $_columns).");";
+    }
   }
 
-  if (count($query_columns)) {
-    $query .= " (\n  ".implode(",\n  ", $query_columns)."\n) /*! ENGINE=MyISAM */;";
+  /*if (count($query_columns)) {
+    $query .= " (\n  ".implode(",\n  ", $query_columns)."\n);\n";
+
+    if (count($index_statements)) {
+      $query .= implode("\n", $index_statements);
+    }
+
+    $query .= "\n\COPY $_table (" . implode(', ', $column_names) . ") FROM '$output/$_table.csv' DELIMITER ',' CSV HEADER;";
 
     if ($schema) {
       fwrite($schema, "-- $_table --\n$query\n\n");
@@ -221,9 +248,9 @@ foreach ($list_tables as $_table) {
     else {
       file_put_contents("$output/$_table.sql", $query);
     }
-  }
+  }*/
 
-  $stmt = $client->execStatement("SELECT * FROM $_table LIMIT $limit;");
+  $stmt = $client->execStatement("SELECT * FROM $_table_name LIMIT $limit;");
 
   $csv = fopen("$output/$_table.csv", "w");
 
@@ -240,6 +267,10 @@ foreach ($list_tables as $_table) {
   while ($row = $stmt->fetchRow()) {
     $row = array_map(
       function ($v) {
+        $v = str_replace('\\"', '"', $v);
+        $v = str_replace("\r", '', $v);
+        $v = str_replace("\0", '', $v);
+        $v = str_replace("\x01", '', $v);
         return str_replace('\\', '\\\\', $v);
       },
       $row
@@ -256,9 +287,31 @@ foreach ($list_tables as $_table) {
 
   fclose($csv);
 
+  if ($n <= 0)
+  {
+	unlink("$output/$_table.csv");
+  }
+
   echo sprintf(" -> %d rows exported \tFile size: %s\r", $n, number_format($s, 0, ".", " "));
 
   echo "\n";
+
+  if ($n > 0 && count($query_columns)) {
+    $query .= " (\n  ".implode(",\n  ", $query_columns)."\n);\n";
+
+    if (count($index_statements)) {
+      $query .= implode("\n", $index_statements);
+    }
+
+    $query .= "\n\COPY $_table (" . implode(', ', $column_names) . ") FROM '$output/$_table.csv' DELIMITER ',' CSV HEADER;";
+
+    if ($schema) {
+      fwrite($schema, "-- $_table --\n$query\n\n");
+    }
+    else {
+      file_put_contents("$output/$_table.sql", $query);
+    }
+  }
 
   $stmt->close();
 }

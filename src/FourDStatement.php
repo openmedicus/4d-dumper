@@ -146,20 +146,36 @@ class FourDStatement {
             $_day = $client->readUByte();
             $_ms = $client->readUInt32();
 
-            $_h = $_ms / (60 * 60 * 1000);
+            $_h = intval($_ms / (60 * 60 * 1000));
             $_ms -= $_h * (60 * 60 * 1000);
 
-            $_m = $_ms / (60 * 1000);
+            $_m = intval($_ms / (60 * 1000));
             $_ms -= $_m * (60 * 1000);
 
-            $_s = $_ms / (1000);
+            $_s = intval($_ms / (1000));
             $_ms -= $_s * (1000);
 
             $_value = sprintf("%04d-%02d-%02d %02d:%02d:%02d.%03d", $_year, $_month, $_day, $_h, $_m, $_s, $_ms);
+	    if ($_value == "0000-00-00 00:00:00.000")
+		$_value = "-infinity";
+
             break;
 
           case "VK_DURATION":
-            $_value = $client->readUInt64();
+            $_ms = $client->readUInt64();
+
+	    $_h = intval($_ms / (60 * 60 * 1000));
+            $_ms -= $_h * (60 * 60 * 1000);
+	    if ($_h >= 24) $_h = 0;
+
+            $_m = intval($_ms / (60 * 1000));
+            $_ms -= $_m * (60 * 1000);
+
+            $_s = intval($_ms / (1000));
+            $_ms -= $_s * (1000);
+
+            $_value = sprintf("%02d:%02d:%02d", $_h, $_m, $_s);
+
             break;
 
           case "VK_TEXT":
@@ -169,7 +185,7 @@ class FourDStatement {
 
           case "VK_BLOB":
           case "VK_IMAGE":
-            $_value = $client->readBlob();
+            $_value = "\x" . bin2hex($client->readBlob());
             break;
 
           default:
