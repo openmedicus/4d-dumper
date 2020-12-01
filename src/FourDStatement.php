@@ -126,8 +126,12 @@ class FourDStatement {
             break;
 
           case "VK_LONG8":
+	    $_value = $client->readUInt64();
+	    break;
+
           case "VK_REAL":
-            $_value = $client->readUInt64();
+            $_tmp = $client->read(8);
+	    $_value = unpack("d", $_tmp)[1];
             break;
 
           case "VK_FLOAT":
@@ -162,12 +166,14 @@ class FourDStatement {
             break;
 
           case "VK_DURATION":
-            $_ms = $client->readUInt64();
+            $_ms = $val = $client->readUInt64();
 
 	    $_h = intval($_ms / (60 * 60 * 1000));
             $_ms -= $_h * (60 * 60 * 1000);
-	    if ($_h >= 24) $_h = 0;
-
+	    if ($_h >= 24) {
+		//echo "$val\n";
+		$_h = 0;
+	    }
             $_m = intval($_ms / (60 * 1000));
             $_ms -= $_m * (60 * 1000);
 

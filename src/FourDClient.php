@@ -330,7 +330,7 @@ class FourDClient {
     $int = $this->readUInt16();
 
     if ($int >= 0x8000) {
-      $int -= 0x10000;
+      $int -=  0x10000;
     }
 
     return $int;
@@ -346,22 +346,23 @@ class FourDClient {
     $tmp = unpack("V", $val);
 
     if ($tmp[1] >= 0x80000000) {
-      $tmp[1] -= 0x100000000;
+      $tmp[1] -=  0x100000000;
     }
 
     return $tmp[1];
   }
 
   /**
-   * Read unsigned 32 bits numbers
+   * Read unsigned 64 bits numbers
    *
    * @return integer
    */
   function readUInt64() {
-    $tmp = unpack("V", $this->read(8));
+    $val = $this->read(8);
+    $tmp = unpack("P", $val);
 
-    if ($tmp[1] >= 0x800000000000) {
-      $tmp[1] -= 0x1000000000000;
+    if ($tmp[1] >= 0x8000000000000000) {
+      $tmp[1] -=  0x10000000000000000;
     }
 
     return $tmp[1];

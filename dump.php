@@ -271,7 +271,8 @@ foreach ($list_tables as $_table) {
         $v = str_replace("\r", '', $v);
         $v = str_replace("\0", '', $v);
         $v = str_replace("\x01", '', $v);
-        return str_replace('\\', '\\\\', $v);
+        str_replace('\\', '\\\\', $v);
+        return str_replace('\\\\x', '\\x', $v);
       },
       $row
     );
